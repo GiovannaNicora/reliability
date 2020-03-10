@@ -105,38 +105,3 @@ def check_is_border(z, border_val, inner=True):
             is_b = 'OuterBorder'
 
     return is_b
-
-
-def pop(X, y, cont_attr=None):
-
-    print(X.shape)
-    if cont_attr is None:
-        cont_attr = [i for i in range(X.shape[1])]
-    weakness = np.zeros(X.shape[0])
-    for i in cont_attr:
-        E_quicksort = np.sort(X.iloc[:, i], kind='quicksort')
-        i_quicksort = np.argsort(X.iloc[:, i], kind='quicksort')
-        c_quicksort = y[i_quicksort]
-        vals, idx_start, count = np.unique(E_quicksort, return_counts=True,
-                                        return_index=True)
-        iresort = np.empty(0)
-        for j,val in enumerate(vals):
-            if count[j]>1:
-                v = vals[j]
-                iv = np.where(E_quicksort==v)[0]
-                c_v = c_quicksort[iv]
-                if iv[0]-1>=0:
-                    prev = c_quicksort[iv[0]-1]
-                    ipart = np.argpartition(c_v, np.where(c_v==prev)[0][0])
-                    if c_v[ipart[0]] != prev:
-                        ipart = ipart[::-1]
-                    ipart = np.array([x + iv[0] for x in ipart])
-                    iresort = np.concatenate((iresort, ipart))
-                else:
-                    iresort = np.concatenate((iresort, iv))
-
-            else:
-                iresort = np.concatenate((iresort, np.array([idx_start[j]])))
-
-        c_quicksort[[int(x) for x in iresort]]
-        E_quicksort[[int(x) for x in iresort]]
