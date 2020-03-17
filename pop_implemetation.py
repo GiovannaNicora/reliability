@@ -36,9 +36,9 @@ def pop_instance_training(X, y,  metric='euclidean'):
         Xc1 = np.reshape(X[iC1, i], (X[iC1].shape[0], 1))
         Xc2 = np.reshape(X[iC2, i], (X[iC2].shape[0], 1))
 
-        pointwise_dis = cdist(Xc1, Xc2)
-        min_val = np.argwhere(pointwise_dis==np.min(pointwise_dis))
-        max_val = np.argwhere(pointwise_dis==np.max(pointwise_dis))
+        pointwise_dis = cdist(Xc1, Xc2, metric=metric)
+        min_val = np.argwhere(pointwise_dis == np.min(pointwise_dis))
+        max_val = np.argwhere(pointwise_dis == np.max(pointwise_dis))
 
         isborder[iC1[min_val[0][0]], i] = -1 # -1 --> inner border
         isborder[iC2[min_val[0][1]], i] = -1
@@ -61,23 +61,6 @@ def pop_instance_training(X, y,  metric='euclidean'):
         mindistance[i] = np.min(pointwise_dis)
         maxdistance[i] = np.max(pointwise_dis)
 
-    #     max_dis = np.max(col_dis, axis=1)
-    #     np.fill_diagonal(col_dis, np.inf)
-    #     min_dis = np.min(col_dis, axis=1)
-    #
-    #     # For each example, see if it is border
-    #     for j in range(X.shape[0]):
-    #         cj = y[j]
-    #         c_opp_i = np.where(y != cj)[0]
-    #         dis_opp = min_dis[c_opp_i]
-    #
-    #         if np.min(dis_opp) == min_dis[j]: # Is border
-    #             isborder[j,i]=1
-    #             mindistance[i] = np.min((mindistance[i], min_dis[j]))
-    #         else:
-    #             weakness[j] = weakness[j]+1
-    #             maxdistance[i] = np.max(maxdistance[i], max_dis[j])
-    #
     return(mindistance,
             maxdistance,
             isborder,
@@ -86,13 +69,49 @@ def pop_instance_training(X, y,  metric='euclidean'):
            attribute2outerborder_value,
            attribute2innerborder_value)
 
+# X (normalized or standardized if euclidean is used)
+# metric can be:
+# - euclidean
+# - cosine
+# - minkowski with r=1
+# - chebyshev (sup=Chebyshev, https://en.wikipedia.org/wiki/Chebyshev_distance)
+def find_multidim_borders(X, y, metric='euclidean', r=None):
+
+    isborder = np.zeros(X.shape[0])
+
+    cl = np.unique(y)
+    iCl1 = np.where(y==cl[0])[0]
+    iCl2 = np.where(y==cl[1])[0]
+
+    X1 = X[iCl1,:]
+    X2 = X[iCl2, :]
+
+    if r is not None:
+        d = cdist(X1, X2, metric=metric)
+    else:
+        d = cdist(X1, X2, metric=metric, p=r)
+    min_d = d.min() # min (def. euclidean) distance between two examples of two different classes
+    max_d = d.max() # max (def. euclidean) distance between two examples of two different classes
+
+    i_inner_borders = np.argwhere(d == min_d)
+
+    for i in range(len(i_inner_borders)):
+        isborder[iCl1[i_inner_borders[i][0]]] = -1
+        isborder[iCl2[i_inner_borders[i][1]]] = -1
+
+    i_outer_borders = np.argwhere(d == max_d)
+    for i in range(len(i_outer_borders)):
+        isborder[iCl1[i_outer_borders[i][0]]] = 1
+        isborder[iCl2[i_outer_borders[i][1]]] = 1
+
+    return(isborder, min_d, max_d)
 
 # z: single attribute of one example
-# border_val: attribute values for the 2 border example
+# border_val: X borders
+# d: distance between the X borders
 def check_is_border(z, border_val, inner=True):
 
     is_b = 'NoBorder'
-    # It's border if for at least one attribute, its distance from
     # one of the two inner border is less then the distance between the border instances
     if len(border_val)> 2:
         print('More than 2 border instance')
@@ -105,3 +124,62 @@ def check_is_border(z, border_val, inner=True):
             is_b = 'OuterBorder'
 
     return is_b
+
+
+def check_is_multidim_border(X, z, isborder, min_d, max_d, metric='euclidean', r=None):
+    is_b = 'NoBorder'
+
+    # It's inner border if its between the two inner border examples, i.e.:
+    # the distances between the new instances and the inner borders is less then the distance between the borders itself
+    i_inner = np.where(isborder == -1)[0]
+
+    if r is None:
+        d_inner = cdist(z.reshape(1,-1), X[i_inner, :], metric=metric)
+    else:
+        d_inner = cdist(z.reshape(1, -1), X[i_inner, :], metric=metric, p=r)
+
+    if d_inner[0][0] < min_d:
+        if d_inner[0][1] < min_d:
+            return 'InnerBorder'
+
+    # If it is not inner check if it is outer
+    # i.e. its distance with one of the two outer is greater than max_d
+    i_outer = np.where(isborder == 1)[0]
+    if r is None:
+        d_outer = cdist(z.reshape(1,-1), X[i_outer, :], metric=metric)
+    else:
+        d_outer = cdist(z.reshape(1, -1), X[i_outer, :], metric=metric, p=r)
+
+    if d_outer[0][0] > max_d:
+        return 'OuterBorder'
+    if d_outer[0][1] > max_d:
+        return 'OuterBorder'
+
+    return is_b
+
+# is_rel: 1 if the i example is reliable, 0 otherwise
+# is_correct: 1 if the i example has been correctly classified
+# return: H(S) = S1/S*H(S1) - S2/S*H(S2)
+# S1 unrel examples, S2 rel examples
+# H: Entropy
+
+def get_gain(is_rel, is_correct):
+
+    i_rel = np.where(is_rel == 1)[0]
+    i_unrel = np.where(is_rel == 0)[0]
+
+    # Prob of correctness in unrel and rel exampls
+    pc_unrel = len(np.where(is_correct[i_unrel]==1)[0])/len(i_unrel)
+    pc_rel = len(np.where(is_correct[i_rel]==1)[0])/len(i_rel)
+
+    # Prob of correctness in the total examples
+    pc = len(np.where(is_correct==1)[0])/len(is_correct)
+
+    h_unrel = -pc_unrel*np.log2(pc_unrel)-(1-pc_unrel)*np.log2(1-pc_unrel)
+    h_rel = -pc_rel*np.log2(pc_rel)-(1-pc_rel)*np.log2(1-pc_rel)
+
+    h_tot = -pc*np.log2(pc)-(1-pc)*np.log2(1-pc)
+
+    gain = h_tot - (len(i_unrel)/len(is_rel))*h_unrel - (len(i_rel)/len(is_rel))*h_rel
+
+    return (gain, h_tot, h_unrel, h_rel)

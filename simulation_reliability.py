@@ -7,12 +7,14 @@ from utils import make_classification_adjusted
 from sklearn.metrics import *
 
 
-def create_plot(df_pl, colors = {0:'blue', 1:'red'}, title='', group_by='label'):
+def create_plot(df_pl, colors = {0:'blue', 1:'red'}, title='', group_by='label', path=None):
     fig, ax = pyplot.subplots()
     grouped = df_pl.groupby(group_by)
     for key, group in grouped:
         group.plot(ax=ax, kind='scatter', x='x', y='y', label=key, color=colors[key])
     pyplot.title(title)
+    if path is not None:
+        pyplot.savefig(path)
     pyplot.show()
 
 
@@ -35,10 +37,12 @@ class_num = Counter(y)
 df = pd.DataFrame(dict(x=X[:,0], y=X[:,1], label=y, clusters=clusters))
 create_plot(df, title='Total population')
 create_plot(df, title='Total population - clusters', group_by='clusters',
-            colors={1: 'royalblue', 2: 'red', 3: 'blue', 4: 'orangered'})
+            colors={1: 'royalblue', 2: 'red', 3: 'blue', 4: 'orangered'},
+            path='/Users/giovannanicora/Documents/total_pop_by_clus.png')
 
 # "Hiding" cluster 1
-create_plot(df[df['clusters'] != 2], title='Hiding cl 2')
+create_plot(df[df['clusters'] != 2],
+            title='Training and Test set', path='/Users/giovannanicora/Documents/known_pop.png')
 iCl2 = np.where(df['clusters'] == 2)
 iCl134 = np.where(df['clusters'] != 2)
 
